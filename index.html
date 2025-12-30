@@ -2,62 +2,67 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Real Hand Tracking VR</title>
+  <title>Debug Hand Tracking</title>
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
-<body style="margin: 0; overflow: hidden;">
+<body>
+  <div id="status" style="position:fixed; top:10px; left:10px; color:white; z-index:9999; background:rgba(0,0,0,0.5); padding:10px; font-family:sans-serif;">
+    1. 画面をクリックして開始<br>
+    2. カメラ許可を確認<br>
+    3. 手をカメラにかざしてください
+  </div>
+
   <video id="input_video" style="display:none;"></video>
 
   <a-scene environment="preset: contact">
-    <a-entity id="cameraRig" position="0 1.6 0.5">
-      <a-entity camera look-controls></a-entity>
+    <a-entity id="rig" position="0 0 0">
+      <a-entity camera position="0 1.6 0"></a-entity>
     </a-entity>
     
-    <a-entity id="hand-points"></a-entity>
-
-    <a-box position="0 1.5 -0.5" scale="0.1 0.1 0.1" color="#FF0000"></a-box>
+    <a-entity id="hand-container"></a-entity>
   </a-scene>
 
   <script>
     const videoElement = document.getElementById('input_video');
-    const handPointsContainer = document.getElementById('hand-points');
+    const status = document.getElementById('status');
+    const container = document.getElementById('hand-container');
     const spheres = [];
 
-    // 1. 手の関節21個分をあらかじめ作成
+    // 手の関節（21個）を生成
     for (let i = 0; i < 21; i++) {
       const s = document.createElement('a-sphere');
-      // 指先（4, 8, 12, 16, 20）は少し大きく、色を変える
-      const isTip = [4, 8, 12, 16, 20].includes(i);
-      s.setAttribute('radius', isTip ? '0.03' : '0.015');
-      s.setAttribute('color', isTip ? '#FFD700' : '#00FFFF');
+      s.setAttribute('radius', '0.03');
+      s.setAttribute('color', i % 4 === 0 ? 'yellow' : 'cyan'); // 指先だけ色を変える
       s.setAttribute('visible', 'false');
-      handPointsContainer.appendChild(s);
+      container.appendChild(s);
       spheres.push(s);
     }
 
     function onResults(results) {
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        status.innerHTML = "手を確認：認識中！";
         const landmarks = results.multiHandLandmarks[0];
 
-        for (let i = 0; i < 21; i++) {
-          const point = landmarks[i];
-          // 座標計算：左右を反転(*-1)させ、位置を調整
-          const x = (point.x - 0.5) * -2;
-          const y = (point.y - 0.5) * -1.5 + 1.5;
-          const z = (point.z * 1.5) - 0.5; // Z軸（前後）も反映
+        landmarks.forEach((point, i) => {
+          // 座標変換を極めてシンプルに
+          // x: 左右（-1.5〜1.5程度）
+          // y: 上下（0.5〜2.5程度）
+          // z: 目の前（-1.0で固定してテスト）
+          const x = (point.x - 0.5) * -3;
+          const y = (point.y - 0.5) * -2 + 1.6;
+          const z = -1.5; 
 
           spheres[i].setAttribute('position', {x: x, y: y, z: z});
           spheres[i].setAttribute('visible', 'true');
-        }
+        });
       } else {
-        // 手が映っていない時は消す
+        status.innerHTML = "カメラ起動中：手を探しています...";
         spheres.forEach(s => s.setAttribute('visible', 'false'));
       }
     }
 
-    // 2. MediaPipeの手認識セットアップ
     const hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
@@ -68,10 +73,8 @@
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
-
     hands.onResults(onResults);
 
-    // 3. カメラの起動
     const camera = new Camera(videoElement, {
       onFrame: async () => {
         await hands.send({image: videoElement});
@@ -79,13 +82,14 @@
       width: 1280,
       height: 720
     });
-    
-    // ブラウザのセキュリティ制限により、ユーザー操作が必要な場合があるため
-    window.addEventListener('click', () => {
-      camera.start().then(() => console.log("Camera started"));
-    }, {once: true});
 
-    console.log("画面を一度クリックしてカメラを有効にしてください。");
+    // 開始トリガー
+    window.addEventListener('click', () => {
+      status.innerHTML = "カメラ起動を試みています...";
+      camera.start()
+        .then(() => { status.innerHTML = "カメラ起動成功！手をかざしてください。"; })
+        .catch(err => { status.innerHTML = "エラー: " + err; });
+    }, {once: true});
   </script>
 </body>
 </html>
