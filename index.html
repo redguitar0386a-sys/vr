@@ -2,64 +2,90 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Full Hand Tracking VR</title>
+  <title>Real Hand Tracking VR</title>
   <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
-<body>
+<body style="margin: 0; overflow: hidden;">
   <video id="input_video" style="display:none;"></video>
 
-  <a-scene environment="preset: contact; cover: false">
-    <a-entity camera position="0 1.6 2" look-controls></a-entity>
+  <a-scene environment="preset: contact">
+    <a-entity id="cameraRig" position="0 1.6 0.5">
+      <a-entity camera look-controls></a-entity>
+    </a-entity>
     
-    <a-entity id="hand-container"></a-entity>
+    <a-entity id="hand-points"></a-entity>
 
-    <a-box position="0 1.5 -0.5" scale="0.2 0.2 0.2" color="red"></a-box>
+    <a-box position="0 1.5 -0.5" scale="0.1 0.1 0.1" color="#FF0000"></a-box>
   </a-scene>
 
   <script>
     const videoElement = document.getElementById('input_video');
-    const handContainer = document.getElementById('hand-container');
-    const joints = [];
+    const handPointsContainer = document.getElementById('hand-points');
+    const spheres = [];
 
-    // 1. 初回に21個の球体（関節）を作成して非表示にしておく
+    // 1. 手の関節21個分をあらかじめ作成
     for (let i = 0; i < 21; i++) {
-      const joint = document.createElement('a-sphere');
-      joint.setAttribute('radius', '0.02');
-      joint.setAttribute('color', '#00ffcc');
-      joint.setAttribute('visible', 'false');
-      handContainer.appendChild(joint);
-      joints.push(joint);
+      const s = document.createElement('a-sphere');
+      // 指先（4, 8, 12, 16, 20）は少し大きく、色を変える
+      const isTip = [4, 8, 12, 16, 20].includes(i);
+      s.setAttribute('radius', isTip ? '0.03' : '0.015');
+      s.setAttribute('color', isTip ? '#FFD700' : '#00FFFF');
+      s.setAttribute('visible', 'false');
+      handPointsContainer.appendChild(s);
+      spheres.push(s);
     }
 
     function onResults(results) {
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
 
-        landmarks.forEach((point, index) => {
-          // 2. カメラ座標をVR空間の座標にマッピング
-          const x = (point.x - 0.5) * -3; // 左右反転と幅調整
-          const y = (point.y - 0.5) * -2 + 1.5; // 上下反転と高さ調整
-          const z = point.z * 2 - 1; // 奥行き
+        for (let i = 0; i < 21; i++) {
+          const point = landmarks[i];
+          // 座標計算：左右を反転(*-1)させ、位置を調整
+          const x = (point.x - 0.5) * -2;
+          const y = (point.y - 0.5) * -1.5 + 1.5;
+          const z = (point.z * 1.5) - 0.5; // Z軸（前後）も反映
 
-          joints[index].setAttribute('position', {x: x, y: y, z: z});
-          joints[index].setAttribute('visible', 'true');
-        });
+          spheres[i].setAttribute('position', {x: x, y: y, z: z});
+          spheres[i].setAttribute('visible', 'true');
+        }
       } else {
-        // 手が見えない時は隠す
-        joints.forEach(j => j.setAttribute('visible', 'false'));
+        // 手が映っていない時は消す
+        spheres.forEach(s => s.setAttribute('visible', 'false'));
       }
     }
 
-    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7 });
+    // 2. MediaPipeの手認識セットアップ
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
     hands.onResults(onResults);
 
-    new Camera(videoElement, {
-      onFrame: async () => { await hands.send({image: videoElement}); },
-      width: 1280, height: 720
-    }).start();
+    // 3. カメラの起動
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({image: videoElement});
+      },
+      width: 1280,
+      height: 720
+    });
+    
+    // ブラウザのセキュリティ制限により、ユーザー操作が必要な場合があるため
+    window.addEventListener('click', () => {
+      camera.start().then(() => console.log("Camera started"));
+    }, {once: true});
+
+    console.log("画面を一度クリックしてカメラを有効にしてください。");
   </script>
 </body>
 </html>
