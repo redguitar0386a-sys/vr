@@ -2,18 +2,18 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Landscape Sync Hand VR</title>
+  <title>Landscape Fixed Sync</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <style>
-    #debug-video { position: fixed; top: 10px; right: 10px; width: 120px; border: 2px solid white; z-index: 1000; border-radius: 5px; background: #000; }
+    #debug-video { position: fixed; top: 10px; right: 10px; width: 120px; border: 2px solid white; z-index: 1000; border-radius: 5px; }
     #ui { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1001; }
-    #start_btn { padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 30px; background: white; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    #start_btn { padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 30px; background: white; border: none; }
   </style>
 </head>
 <body style="margin: 0; background: #000; overflow: hidden;">
 
-  <div id="ui"><button id="start_btn">横画面・視界同期モード</button></div>
+  <div id="ui"><button id="start_btn">横画面・視界完全同期</button></div>
   <video id="debug-video" playsinline></video>
 
   <a-scene device-orientation-permission-ui="enabled: false">
@@ -72,12 +72,11 @@
         results.multiHandLandmarks.forEach((landmarks, index) => {
           if (index < 2) {
             const pts = landmarks.map(pt => {
-              // 横画面(16:9)の画角に合わせたマッピング
-              // xは-0.5〜0.5を約4.5メートル幅に、yは約2.5メートル幅に展開
+              // 【重要】横持ちの場合、カメラ映像のYがVRのX、カメラのXがVRのYになります
               return {
-                x: (pt.x - 0.5) * 4.5,
-                y: (pt.y - 0.5) * -2.5 + 1.6,
-                z: -1.2 // 手を少し奥に配置して見やすく
+                x: (pt.y - 0.5) * 4.0,       // カメラの縦の動きをVRの横に
+                y: (pt.x - 0.5) * -2.5 + 1.6, // カメラの横の動きをVRの縦に
+                z: -1.0
               };
             });
 
