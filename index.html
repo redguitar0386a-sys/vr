@@ -1,112 +1,100 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <title>Direct Sight Hand Sync</title>
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-  <style>
-    #debug-video { position: fixed; top: 10px; right: 10px; width: 100px; border: 1px solid #fff; z-index: 1000; border-radius: 4px; }
-    #ui { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 1001; }
-    #start_btn { padding: 12px 24px; background: #fff; border: none; border-radius: 20px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-  </style>
+    <meta charset="UTF-8">
+    <title>WebXR Hand Tracking Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; }
+    </style>
 </head>
-<body style="margin: 0; background: #000; overflow: hidden;">
-
-  <div id="ui"><button id="start_btn">視界同期スタート</button></div>
-  <video id="debug-video" playsinline></video>
-
-  <a-scene device-orientation-permission-ui="enabled: false">
-    <a-entity camera look-controls position="0 1.6 0"></a-entity>
+<body>
+    <div id="info">正方形のエリア内で手を動かしてください</div>
     
-    <a-box position="0 2.5 0" width="8" height="8" depth="8" material="side: back; wireframe: true; color: #444"></a-box>
-
-    <a-entity id="hand0"></a-entity>
-    <a-entity id="hand1"></a-entity>
-  </a-scene>
-
-  <script>
-    const video = document.getElementById('debug-video');
-    const handGroups = [document.getElementById('hand0'), document.getElementById('hand1')];
-    const spheres = [[], []];
-    const lines = [[], []];
-    const FINGER_MAP = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20],[5,9,13,17,5]];
-
-    // パーツ初期化
-    for (let h = 0; h < 2; h++) {
-      const color = (h === 0) ? "#00FFFF" : "#FF00FF";
-      for (let i = 0; i < 21; i++) {
-        let s = document.createElement('a-sphere');
-        s.setAttribute('radius', '0.03');
-        s.setAttribute('color', color);
-        s.setAttribute('visible', false);
-        handGroups[h].appendChild(s);
-        spheres[h].push(s);
-      }
-      FINGER_MAP.forEach(indices => {
-        for (let j = 0; j < indices.length - 1; j++) {
-          let l = document.createElement('a-entity');
-          l.setAttribute('line', {color: color, opacity: 0.6});
-          handGroups[h].appendChild(l);
-          lines[h].push({ el: l, start: indices[j], end: indices[j+1] });
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
         }
-      });
-    }
+    </script>
 
-    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6});
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+        import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
-    hands.onResults((results) => {
-      spheres.forEach(h => h.forEach(s => s.setAttribute('visible', false)));
-      lines.forEach(h => h.forEach(l => l.el.setAttribute('visible', false)));
+        let container, camera, scene, renderer;
+        let hand1, hand2;
 
-      if (results.multiHandLandmarks) {
-        results.multiHandLandmarks.forEach((landmarks, index) => {
-          if (index < 2) {
-            // カメラに映っている手をそのまま読み取るための座標変換
-            const pts = landmarks.map(pt => ({
-              // カメラのX(0~1)をVRのXに、カメラのY(0~1)をVRのYにそのままリンク
-              // 縦持ち/横持ちでカメラの解像度が変わるので、それに対応した倍率
-              x: (pt.x - 0.5) * 3.2,       
-              y: (pt.y - 0.5) * -4.5 + 1.6, 
-              z: -0.8 + (pt.z * 0.5) // 少し奥行きを持たせる
+        init();
+        animate();
+
+        function init() {
+            container = document.createElement('div');
+            document.body.appendChild(container);
+
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+            // 光源の設定
+            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+            scene.add(light);
+
+            // レンダラーの設定（透明度を有効にしてパススルーを表示）
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // ARボタンの追加（ハンドトラッキング機能を要求）
+            document.body.appendChild(ARButton.createButton(renderer, {
+                requiredFeatures: ['hand-tracking'],
+                optionalFeatures: ['dom-overlay'],
+                domOverlay: { root: document.getElementById('info') }
             }));
 
-            pts.forEach((pos, i) => {
-              spheres[index][i].setAttribute('position', pos);
-              spheres[index][i].setAttribute('visible', true);
-            });
-            lines[index].forEach(line => {
-              const start = pts[line.start], end = pts[line.end];
-              line.el.setAttribute('line', `start: ${start.x} ${start.y} ${start.z}; end: ${end.x} ${end.y} ${end.z}`);
-              line.el.setAttribute('visible', true);
-            });
-          }
-        });
-      }
-    });
+            // --- 3x3mの正方形の部屋の枠線を作成 ---
+            const size = 3; // 3メートル
+            const geometry = new THREE.BoxGeometry(size, 0.05, size);
+            const edges = new THREE.EdgesGeometry(geometry);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
+            line.position.y = 0; // 床の位置
+            scene.add(line);
 
-    async function startApp() {
-      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
-        await DeviceOrientationEvent.requestPermission();
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: {ideal: 1280}, height: {ideal: 720} }
-        });
-        video.srcObject = stream;
-        video.onloadedmetadata = () => {
-          video.play();
-          const run = async () => {
-            if(!video.paused) await hands.send({image: video});
-            requestAnimationFrame(run);
-          };
-          run();
-        };
-        document.getElementById('ui').style.display = 'none';
-      } catch (e) { alert(e); }
-    }
-    document.getElementById('start_btn').addEventListener('click', startApp);
-  </script>
+            // --- ハンドトラッキングの設定 ---
+            const handModelFactory = new XRHandModelFactory();
+
+            // 左手
+            hand1 = renderer.xr.getHand(0);
+            hand1.add(handModelFactory.createHandModel(hand1, "mesh"));
+            scene.add(hand1);
+
+            // 右手
+            hand2 = renderer.xr.getHand(1);
+            hand2.add(handModelFactory.createHandModel(hand2, "mesh"));
+            scene.add(hand2);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(render);
+        }
+
+        function render() {
+            // ここに手が正方形の枠に触れたかどうかの判定（衝突判定）を追加可能
+            renderer.render(scene, camera);
+        }
+    </script>
 </body>
 </html>
