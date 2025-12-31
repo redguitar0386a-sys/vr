@@ -2,18 +2,18 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Landscape Fixed Hand VR</title>
+  <title>Landscape Sync Hand VR</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <style>
-    #debug-video { position: fixed; top: 10px; right: 10px; width: 120px; border: 2px solid white; z-index: 1000; border-radius: 5px; background: #000; transform: scaleX(-1); }
+    #debug-video { position: fixed; top: 10px; right: 10px; width: 120px; border: 2px solid white; z-index: 1000; border-radius: 5px; background: #000; }
     #ui { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1001; }
     #start_btn { padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 30px; background: white; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
   </style>
 </head>
 <body style="margin: 0; background: #000; overflow: hidden;">
 
-  <div id="ui"><button id="start_btn">横画面VRを起動</button></div>
+  <div id="ui"><button id="start_btn">横画面・視界同期モード</button></div>
   <video id="debug-video" playsinline></video>
 
   <a-scene device-orientation-permission-ui="enabled: false">
@@ -41,12 +41,11 @@
     const lines = [[], []];
     const FINGER_MAP = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20],[5,9,13,17,5]];
 
-    // 手のパーツ作成
     for (let h = 0; h < 2; h++) {
       const color = (h === 0) ? "#00FFFF" : "#FF00FF";
       for (let i = 0; i < 21; i++) {
         let s = document.createElement('a-sphere');
-        s.setAttribute('radius', i === 0 ? '0.06' : '0.04');
+        s.setAttribute('radius', '0.04');
         s.setAttribute('color', color);
         s.setAttribute('visible', false);
         handGroups[h].appendChild(s);
@@ -55,7 +54,7 @@
       FINGER_MAP.forEach(indices => {
         for (let j = 0; j < indices.length - 1; j++) {
           let l = document.createElement('a-entity');
-          l.setAttribute('line', {color: color, opacity: 0.8});
+          l.setAttribute('line', {color: color, opacity: 0.7});
           handGroups[h].appendChild(l);
           lines[h].push({ el: l, start: indices[j], end: indices[j+1] });
         }
@@ -63,7 +62,7 @@
     }
 
     const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6});
+    hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
 
     hands.onResults((results) => {
       spheres.forEach(h => h.forEach(s => s.setAttribute('visible', false)));
@@ -72,13 +71,15 @@
       if (results.multiHandLandmarks) {
         results.multiHandLandmarks.forEach((landmarks, index) => {
           if (index < 2) {
-            // 【横画面用の座標軸変換】
-            // カメラを横にした時の座標系のズレを補正しています
-            const pts = landmarks.map(pt => ({
-              x: (pt.x - 0.5) * 5,          // 左右の広がり
-              y: (pt.y - 0.5) * -3.5 + 1.6, // 上下の動き
-              z: -1.0                      // 奥行きを安定させる
-            }));
+            const pts = landmarks.map(pt => {
+              // 横画面(16:9)の画角に合わせたマッピング
+              // xは-0.5〜0.5を約4.5メートル幅に、yは約2.5メートル幅に展開
+              return {
+                x: (pt.x - 0.5) * 4.5,
+                y: (pt.y - 0.5) * -2.5 + 1.6,
+                z: -1.2 // 手を少し奥に配置して見やすく
+              };
+            });
 
             pts.forEach((pos, i) => {
               spheres[index][i].setAttribute('position', pos);
