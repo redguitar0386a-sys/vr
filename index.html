@@ -2,33 +2,24 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Landscape Fixed Sync</title>
+  <title>Direct Sight Hand Sync</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <style>
-    #debug-video { position: fixed; top: 10px; right: 10px; width: 120px; border: 2px solid white; z-index: 1000; border-radius: 5px; }
-    #ui { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1001; }
-    #start_btn { padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 30px; background: white; border: none; }
+    #debug-video { position: fixed; top: 10px; right: 10px; width: 100px; border: 1px solid #fff; z-index: 1000; border-radius: 4px; }
+    #ui { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 1001; }
+    #start_btn { padding: 12px 24px; background: #fff; border: none; border-radius: 20px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
   </style>
 </head>
 <body style="margin: 0; background: #000; overflow: hidden;">
 
-  <div id="ui"><button id="start_btn">横画面・視界完全同期</button></div>
+  <div id="ui"><button id="start_btn">視界同期スタート</button></div>
   <video id="debug-video" playsinline></video>
 
   <a-scene device-orientation-permission-ui="enabled: false">
-    <a-entity id="rig">
-      <a-entity camera look-controls position="0 1.6 0"></a-entity>
-    </a-entity>
+    <a-entity camera look-controls position="0 1.6 0"></a-entity>
     
-    <a-box position="0 2.5 0" width="10" height="10" depth="10" material="side: back; shader: flat">
-      <a-plane position="0 -4.99 0" rotation="-90 0 0" width="10" height="10" color="#2ecc71"></a-plane>
-      <a-plane position="0 4.99 0" rotation="90 0 0" width="10" height="10" color="#3498db"></a-plane>
-      <a-plane position="0 0 -4.99" width="10" height="10" color="#f1c40f"></a-plane>
-      <a-plane position="0 0 4.99" rotation="0 180 0" width="10" height="10" color="#e74c3c"></a-plane>
-      <a-plane position="-4.99 0 0" rotation="0 90 0" width="10" height="10" color="#9b59b6"></a-plane>
-      <a-plane position="4.99 0 0" rotation="0 -90 0" width="10" height="10" color="#e67e22"></a-plane>
-    </a-box>
+    <a-box position="0 2.5 0" width="8" height="8" depth="8" material="side: back; wireframe: true; color: #444"></a-box>
 
     <a-entity id="hand0"></a-entity>
     <a-entity id="hand1"></a-entity>
@@ -41,11 +32,12 @@
     const lines = [[], []];
     const FINGER_MAP = [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20],[5,9,13,17,5]];
 
+    // パーツ初期化
     for (let h = 0; h < 2; h++) {
       const color = (h === 0) ? "#00FFFF" : "#FF00FF";
       for (let i = 0; i < 21; i++) {
         let s = document.createElement('a-sphere');
-        s.setAttribute('radius', '0.04');
+        s.setAttribute('radius', '0.03');
         s.setAttribute('color', color);
         s.setAttribute('visible', false);
         handGroups[h].appendChild(s);
@@ -54,7 +46,7 @@
       FINGER_MAP.forEach(indices => {
         for (let j = 0; j < indices.length - 1; j++) {
           let l = document.createElement('a-entity');
-          l.setAttribute('line', {color: color, opacity: 0.7});
+          l.setAttribute('line', {color: color, opacity: 0.6});
           handGroups[h].appendChild(l);
           lines[h].push({ el: l, start: indices[j], end: indices[j+1] });
         }
@@ -62,7 +54,7 @@
     }
 
     const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+    hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6});
 
     hands.onResults((results) => {
       spheres.forEach(h => h.forEach(s => s.setAttribute('visible', false)));
@@ -71,14 +63,14 @@
       if (results.multiHandLandmarks) {
         results.multiHandLandmarks.forEach((landmarks, index) => {
           if (index < 2) {
-            const pts = landmarks.map(pt => {
-              // 【重要】横持ちの場合、カメラ映像のYがVRのX、カメラのXがVRのYになります
-              return {
-                x: (pt.y - 0.5) * 4.0,       // カメラの縦の動きをVRの横に
-                y: (pt.x - 0.5) * -2.5 + 1.6, // カメラの横の動きをVRの縦に
-                z: -1.0
-              };
-            });
+            // カメラに映っている手をそのまま読み取るための座標変換
+            const pts = landmarks.map(pt => ({
+              // カメラのX(0~1)をVRのXに、カメラのY(0~1)をVRのYにそのままリンク
+              // 縦持ち/横持ちでカメラの解像度が変わるので、それに対応した倍率
+              x: (pt.x - 0.5) * 3.2,       
+              y: (pt.y - 0.5) * -4.5 + 1.6, 
+              z: -0.8 + (pt.z * 0.5) // 少し奥行きを持たせる
+            }));
 
             pts.forEach((pos, i) => {
               spheres[index][i].setAttribute('position', pos);
@@ -100,7 +92,7 @@
       }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: 1280, height: 720 }
+          video: { facingMode: "environment", width: {ideal: 1280}, height: {ideal: 720} }
         });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
